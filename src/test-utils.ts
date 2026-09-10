@@ -20,8 +20,8 @@ export const geminiModel = "googleai/gemini-2.5-flash";
 export function setupNeo4jTestEnvironment(
   neo4jVersion: string = "2026.01.4",
   indexId: string = "genkit-test-index",
-  beforeAllCallback: (ctx: Neo4jTestStartupContext) => any = () => { },
-  beforeEachCallback: (ctx: Neo4jTestStartupContext) => any = () => { },
+  beforeAllCallback: (ctx: Neo4jTestStartupContext) => any = () => {},
+  beforeEachCallback: (ctx: Neo4jTestStartupContext) => any = () => {},
 ): Neo4jTestStartupContext {
   // We an empty object that will be populated by the hooks.
   const setupCtx = {} as Neo4jTestStartupContext;

@@ -1,6 +1,6 @@
 import { errorMetadataAndHybrid, FULLTEXT_INDEX_SUFFIX, Neo4jParams } from ".";
 import { z } from "genkit";
-import { constructMetadataFilter } from "./filter-utils";
+import { constructMetadataFilter, safeIdent } from "./filter-utils";
 
 export interface SearchStrategy {
   cypherPrefix(): string;
@@ -30,11 +30,14 @@ export class VectorFunctionStrategy implements SearchStrategy {
       fullTextIndexName = params.indexId + FULLTEXT_INDEX_SUFFIX,
     } = params;
 
-    const nodeLabel = label || indexId;
+    const nodeLabel = safeIdent(label || indexId);
+    const embeddingPropertyName = safeIdent(embeddingProperty);
+    const fullTextIndexNameValue = safeIdent(fullTextIndexName);
+    const textPropertyName = safeIdent(textProperty);
 
     const retrievalQuery =
       params?.retrievalQuery ??
-      `RETURN node.${textProperty} AS text, node {.*, text: Null, embedding: Null, id: Null } AS metadata`;
+      `RETURN node.${textPropertyName} AS text, node {.*, text: Null, embedding: Null, id: Null } AS metadata`;
     const fullTextRetrievalQuery =
       params?.fullTextRetrievalQuery ?? retrievalQuery;
     const isHybrid = params?.searchType === "hybrid";
@@ -58,7 +61,7 @@ export class VectorFunctionStrategy implements SearchStrategy {
               // We use 0 as min
               RETURN n.node AS node, (n.score / max) AS score 
               UNION
-              CALL db.index.fulltext.queryNodes("${fullTextIndexName}", $fullTextQuery, {limit: $k}) YIELD node, score
+              CALL db.index.fulltext.queryNodes("${fullTextIndexNameValue}", $fullTextQuery, {limit: $k}) YIELD node, score
               WITH collect({node: node, score: score}) AS nodes, max(score) AS max
               UNWIND nodes AS n
               RETURN n.node AS node, (n.score / max) AS score
@@ -73,12 +76,12 @@ export class VectorFunctionStrategy implements SearchStrategy {
 
       const query = isHybrid ? hybridQuery : vectorQuery;
 
-      isHybrid && console.log("Generated Query name:", fullTextIndexName);
+      isHybrid && console.log("Generated Query name:", fullTextIndexNameValue);
 
       const additionalParams = isHybrid
         ? {
             fullTextQuery: params?.fullTextQuery ?? content,
-            fullTextIndexName: fullTextIndexName,
+            fullTextIndexName: fullTextIndexNameValue,
           }
         : {};
 
@@ -92,13 +95,13 @@ export class VectorFunctionStrategy implements SearchStrategy {
     const baseIndexQuery = `
       CYPHER runtime = parallel parallelRuntimeSupport=all 
       MATCH (n:\`${nodeLabel}\`)
-      WHERE n.\`${embeddingProperty}\` IS NOT NULL
+      WHERE n.\`${embeddingPropertyName}\` IS NOT NULL
       AND
     `;
 
     const baseCosineQuery = `
       WITH n as node, vector.similarity.cosine(
-        n.\`${embeddingProperty}\`,
+        n.\`${embeddingPropertyName}\`,
         $embedding
       ) AS score ORDER BY score DESC LIMIT toInteger($k)
     `;
@@ -123,10 +126,12 @@ export class MatchSearchClauseStrategy implements SearchStrategy {
   ): { query: string; additionalParams: Record<string, any> } {
     const { filter, k } = options;
     const { indexId, textProperty = "text" } = params;
+    const indexIdValue = safeIdent(indexId);
+    const textPropertyName = safeIdent(textProperty);
 
     const retrievalQuery =
       params?.retrievalQuery ??
-      `RETURN node.${textProperty} AS text, node {.*, text: Null, embedding: Null, id: Null } AS metadata`;
+      `RETURN node.${textPropertyName} AS text, node {.*, text: Null, embedding: Null, id: Null } AS metadata`;
 
     let filterClause = "";
     let additionalParams: Record<string, any> = {};
@@ -142,7 +147,7 @@ export class MatchSearchClauseStrategy implements SearchStrategy {
       CYPHER 25
       MATCH (node)
       SEARCH node IN (
-          VECTOR INDEX \`${indexId}\`
+          VECTOR INDEX \`${indexIdValue}\`
           FOR $embedding
           ${filterClause}
           LIMIT toInteger($k)

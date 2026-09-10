@@ -34,6 +34,7 @@ import {
   GenericGraphRagRetriever,
   GraphRagConfig,
 } from "./rag-utils";
+import { safeIdent } from "./filter-utils";
 
 export const FULLTEXT_INDEX_SUFFIX = "__fulltext";
 export const errorMetadataAndHybrid =
@@ -175,6 +176,7 @@ export function configureNeo4jGraphRagRetrievers<
       const documents = await pcRetriever.retrieve(
         content.text ?? "",
         options?.k,
+        options?.filter,
       );
       return { documents };
     },
@@ -196,6 +198,7 @@ export function configureNeo4jGraphRagRetrievers<
       const documents = await hydeRetriever.retrieve(
         content.text ?? "",
         options?.k,
+        options?.filter,
       );
       return { documents };
     },
@@ -219,6 +222,7 @@ export function configureNeo4jGraphRagRetrievers<
           const documents = await genericRetriever.retrieve(
             content.text ?? "",
             options?.k,
+            options?.filter,
           );
           return { documents };
         },
@@ -240,6 +244,17 @@ export function configureNeo4jGraphRagTools<
       name: `neo4j/${indexId}/parentChildIngestor`,
       description:
         "Ingest documents with parent-child-subchunk structure in Neo4j",
+      inputSchema: z.object({
+        documents: z
+          .array(
+            z.object({
+              id: z.string().uuid().optional(),
+              text: z.string().max(50_000),
+              metadata: z.record(z.string(), z.any()).optional(),
+            }),
+          )
+          .max(100),
+      }),
     },
     async ({
       documents,
@@ -260,6 +275,17 @@ export function configureNeo4jGraphRagTools<
     {
       name: `neo4j/${indexId}/hydeIngestor`,
       description: "Ingest documents for HyDE retrieval in Neo4j",
+      inputSchema: z.object({
+        documents: z
+          .array(
+            z.object({
+              id: z.string().uuid().optional(),
+              text: z.string().max(50_000),
+              metadata: z.record(z.string(), z.any()).optional(),
+            }),
+          )
+          .max(100),
+      }),
     },
     async ({
       documents,
@@ -380,7 +406,9 @@ export function configureNeo4jIndexer<
       );
 
       const BATCH_SIZE = 1000;
-      const labelName = label || indexId;
+      const safeTextProperty = safeIdent(textProperty);
+      const safeLabelName = safeIdent(label || indexId);
+      const safeIdProperty = safeIdent(idProperty);
 
       for (let i = 0; i < docs.length; i += BATCH_SIZE) {
         const batchDocs = docs.slice(i, i + BATCH_SIZE);
@@ -395,14 +423,14 @@ export function configureNeo4jIndexer<
           };
         });
 
-        const createOrMerge = `MERGE (t:\`${labelName}\` {${idProperty}: row.id})`;
+        const createOrMerge = `MERGE (t:\`${safeLabelName}\` {${safeIdProperty}: row.id})`;
 
         const creationQuery =
           params?.creationQuery ??
           `
           UNWIND $data AS row
           ${createOrMerge}
-          SET t.${textProperty} = row.text,
+          SET t.${safeTextProperty} = row.text,
               t += row.metadata
           WITH t, row.embedding AS embedding
           CALL db.create.setNodeVectorProperty(t, $embedding, embedding)
@@ -418,14 +446,14 @@ export function configureNeo4jIndexer<
       let withMetadataClause = "";
       if (filterMetadata.length > 0) {
         const metadataProps = filterMetadata
-          .map((key) => `n.\`${key}\``)
+          .map((key) => `n.\`${safeIdent(key)}\``)
           .join(", ");
         withMetadataClause = ` WITH [${metadataProps}]`;
       }
 
       const createVectorIndexQuery = `
       ${cypherPrefix}CREATE VECTOR INDEX $indexName IF NOT EXISTS
-      FOR (n:\`${labelName}\`) ON (n.\`${embeddingProperty}\`)${withMetadataClause}
+      FOR (n:\`${safeLabelName}\`) ON (n.\`${embeddingProperty}\`)${withMetadataClause}
             `.trim();
 
       await neo4j_instance.executeQuery(
@@ -437,8 +465,8 @@ export function configureNeo4jIndexer<
       if (fullTextQuery != undefined) {
         const fullTextIndexQuery = `
           CREATE FULLTEXT INDEX $fullTextIndexName IF NOT EXISTS
-          FOR (n:\`${labelName}\`)
-          ON EACH [n.\`${textProperty}\`]
+          FOR (n:\`${safeLabelName}\`)
+          ON EACH [n.\`${safeTextProperty}\`]
           `;
         await neo4j_instance.executeQuery(
           fullTextIndexQuery,

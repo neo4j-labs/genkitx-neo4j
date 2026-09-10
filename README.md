@@ -6,7 +6,7 @@ This is a Neo4j plugin for Genkit, providing vector indexing and retrieval capab
 
 ```bash
 npm i --save genkitx-neo4j
-````
+```
 
 ## Environment variable
 

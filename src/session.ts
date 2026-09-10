@@ -1,5 +1,6 @@
 import { SessionData, SessionStore } from "@genkit-ai/ai/session";
 import { Driver, auth, driver as neo4jDriver } from "neo4j-driver";
+import { safeIdent } from "./filter-utils";
 
 export interface Neo4jSessionStoreConfig {
   url: string;
@@ -25,10 +26,12 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
 
   constructor(config: Neo4jSessionStoreConfig) {
     this.config = config;
-    this.sessionLabel = config.sessionLabel || "GenkitSession";
-    this.messageLabel = config.messageLabel || "Message";
-    this.nextMessageRelType = config.nextMessageRelType || "NEXT";
-    this.lastMessageRelType = config.lastMessageRelType || "LAST_MESSAGE";
+    this.sessionLabel = safeIdent(config.sessionLabel || "GenkitSession");
+    this.messageLabel = safeIdent(config.messageLabel || "Message");
+    this.nextMessageRelType = safeIdent(config.nextMessageRelType || "NEXT");
+    this.lastMessageRelType = safeIdent(
+      config.lastMessageRelType || "LAST_MESSAGE",
+    );
     this.driver = neo4jDriver(
       this.config.url,
       auth.basic(this.config.username, this.config.password || ""),
@@ -40,7 +43,40 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
   public setWindowSize(size: number) {
     this.windowSize = size;
   }
+  private async getStoredMessages(
+    tx: any,
+    sessionId: string,
+  ): Promise<
+    Array<{
+      content: string;
+      role: string;
+      metadata: string;
+      threadId: string;
+    }>
+  > {
+    const result = await tx.run(
+      `MATCH (s:\`${this.sessionLabel}\` {sessionId: $sessionId})
+     OPTIONAL MATCH (s)-[:${this.lastMessageRelType}]->(lastMessage)
+     OPTIONAL MATCH p=(firstMessage)-[:${this.nextMessageRelType}*0..]->(lastMessage)
+     WITH p
+     ORDER BY length(p) DESC
+     LIMIT 1
+     WITH CASE WHEN p IS NULL THEN [] ELSE nodes(p) END AS messages
+     UNWIND messages AS message
+     RETURN message.content AS content,
+            message.role AS role,
+            message.metadata AS metadata,
+            message.threadId AS threadId`,
+      { sessionId },
+    );
 
+    return result.records.map((record: any) => ({
+      content: record.get("content"),
+      role: record.get("role"),
+      metadata: record.get("metadata"),
+      threadId: record.get("threadId"),
+    }));
+  }
   async get(sessionId: string): Promise<SessionData<S> | undefined> {
     const session = this.driver.session({ database: this.config.database });
     try {
@@ -116,15 +152,41 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
         lastNodeId = findLastNodeResult.records[0].get("lastNode").identity;
       }
 
-      for (const threadId in sessionData.threads) {
-        const messages = sessionData.threads[threadId];
+      const storedMessages = await this.getStoredMessages(tx, sessionId);
 
-        for (const msg of messages) {
-          const content = JSON.stringify(msg.content);
-          const metadata = JSON.stringify(msg.metadata || {});
+      const incomingMessages = Object.entries(
+        sessionData.threads ?? {},
+      ).flatMap(([threadId, messages]) =>
+        (messages ?? []).map((msg) => ({
+          threadId,
+          msg,
+          content: JSON.stringify(msg.content),
+          role: msg.role,
+          metadata: JSON.stringify(msg.metadata || {}),
+        })),
+      );
 
-          const createMessageResult = await tx.run(
-            `CREATE (m:\`${this.messageLabel}\` {
+      const incomingStartsWithStoredHistory =
+        incomingMessages.length >= storedMessages.length &&
+        storedMessages.every((stored, index) => {
+          const incoming = incomingMessages[index];
+
+          return (
+            incoming &&
+            incoming.threadId === stored.threadId &&
+            incoming.content === stored.content &&
+            incoming.role === stored.role &&
+            incoming.metadata === stored.metadata
+          );
+        });
+
+      const messagesToAppend = incomingStartsWithStoredHistory
+        ? incomingMessages.slice(storedMessages.length)
+        : incomingMessages;
+
+      for (const { threadId, msg, content, metadata } of messagesToAppend) {
+        const createMessageResult = await tx.run(
+          `CREATE (m:\`${this.messageLabel}\` {
                content: $content,
                role: $role,
                metadata: $metadata,
@@ -132,22 +194,21 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
                timestamp: timestamp()
              })
              RETURN m`,
-            { content, role: msg.role, metadata, threadId },
-          );
+          { content, role: msg.role, metadata, threadId },
+        );
 
-          const newMessageNodeId =
-            createMessageResult.records[0].get("m").identity;
+        const newMessageNodeId =
+          createMessageResult.records[0].get("m").identity;
 
-          if (lastNodeId !== null) {
-            await tx.run(
-              `MATCH (n1), (n2)
+        if (lastNodeId !== null) {
+          await tx.run(
+            `MATCH (n1), (n2)
                WHERE id(n1) = $lastNodeId AND id(n2) = $newMessageNodeId
                CREATE (n1)-[:${this.nextMessageRelType}]->(n2)`,
-              { lastNodeId, newMessageNodeId },
-            );
-          }
-          lastNodeId = newMessageNodeId;
+            { lastNodeId, newMessageNodeId },
+          );
         }
+        lastNodeId = newMessageNodeId;
       }
 
       if (lastNodeId !== null) {
@@ -172,9 +233,10 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
     const session = this.driver.session({ database: this.config.database });
     try {
       await session.run(
-        `MATCH p=(chatSession:${this.sessionLabel} {sessionId: $sessionId})-[:${this.lastMessageRelType}]->(lastMessage)<-[:${this.nextMessageRelType}*0..]-()
-        UNWIND nodes(p) as node
-        DETACH DELETE node`,
+        `MATCH (s:\`${this.sessionLabel}\` {sessionId: $sessionId})
+   OPTIONAL MATCH (s)-[:${this.lastMessageRelType}]->(lastMessage)
+                  <-[:${this.nextMessageRelType}*0..]-(m)
+   DETACH DELETE s, m`,
         { sessionId },
       );
     } finally {

@@ -1,5 +1,5 @@
 import { Document, genkit } from "genkit";
-import { test, describe, expect } from "@jest/globals";
+import { test, describe, expect, jest } from "@jest/globals";
 import {
   configureNeo4jGraphRagRetrievers,
   neo4j,
@@ -19,6 +19,13 @@ import {
 } from "../rag-utils";
 import { geminiModel, setupNeo4jTestEnvironment } from "../test-utils";
 import { googleAI } from "@genkit-ai/googleai";
+jest.setTimeout(30000);
+
+const hasGeminiApiKey = Boolean(
+  process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
+);
+
+const geminiTest = hasGeminiApiKey ? test : test.skip;
 
 /**
  * This file contains integration tests for the Genkit Neo4j plugin.
@@ -41,212 +48,228 @@ describe("Neo4j RAG Retrievers", () => {
 
   const setupCtx = setupNeo4jTestEnvironment("5.26.16", indexId);
 
-  test("retrieve with ParentChildRetriever", async () => {
-    const pcRetriever = new ParentChildRetriever(
-      setupCtx.ai,
-      setupCtx.clientParams,
-      INDEXER_REF,
-      VECTOR_RETRIEVER_REF,
-    );
+  geminiTest(
+    "retrieve with ParentChildRetriever",
+    async () => {
+      const pcRetriever = new ParentChildRetriever(
+        setupCtx.ai,
+        setupCtx.clientParams,
+        INDEXER_REF,
+        VECTOR_RETRIEVER_REF,
+      );
 
-    const docText =
-      "Protocol X-99 is an advanced security system using quantum encryption. Only level 5 executives can disable it with code Alpha-Bravo.";
+      const docText =
+        "Protocol X-99 is an advanced security system using quantum encryption. Only level 5 executives can disable it with code Alpha-Bravo.";
 
-    await pcRetriever.ingestDocument({
-      documents: [{ text: docText, metadata: { topic: "security" } }],
-    });
+      await pcRetriever.ingestDocument({
+        documents: [{ text: docText, metadata: { topic: "security" } }],
+      });
 
-    const userQuestion = "How do I disable protocol X-99 and who can do it?";
+      const userQuestion = "How do I disable protocol X-99 and who can do it?";
 
-    const retrievedDocs = await setupCtx.ai.retrieve({
-      retriever: PC_RETRIEVER_REF,
-      query: userQuestion,
-      options: { k: 3 },
-    });
+      const retrievedDocs = await setupCtx.ai.retrieve({
+        retriever: PC_RETRIEVER_REF,
+        query: userQuestion,
+        options: { k: 3 },
+      });
 
-    expect(retrievedDocs.length).toBeGreaterThan(0);
-    expect(retrievedDocs[0].content[0].text).toContain("Protocol X-99");
+      expect(retrievedDocs.length).toBeGreaterThan(0);
+      expect(retrievedDocs[0].content[0].text).toContain("Protocol X-99");
 
-    const response = await setupCtx.ai.generate({
-      model: geminiModel,
-      prompt: `${pcRetriever.getSystemPrompt()}\n\nUser Question: ${userQuestion}`,
-      docs: retrievedDocs,
-    });
+      const response = await setupCtx.ai.generate({
+        model: geminiModel,
+        prompt: `${pcRetriever.getSystemPrompt()}\n\nUser Question: ${userQuestion}`,
+        docs: retrievedDocs,
+      });
 
-    const answer = response.text.toLowerCase();
-    expect(answer).toContain("level 5");
-    expect(answer).toContain("alpha-bravo");
-  }, 30000);
+      const answer = response.text.toLowerCase();
+      expect(answer).toContain("level 5");
+      expect(answer).toContain("alpha-bravo");
+    },
+    30000,
+  );
 
-  test("retrieve() with HypotheticalQuestionRetriever", async () => {
-    const hydeRetriever = new HypotheticalQuestionRetriever(
-      setupCtx.ai,
-      setupCtx.clientParams,
-      INDEXER_REF,
-      VECTOR_RETRIEVER_REF,
-      geminiModel,
-    );
+  geminiTest(
+    "retrieve() with HypotheticalQuestionRetriever",
+    async () => {
+      const hydeRetriever = new HypotheticalQuestionRetriever(
+        setupCtx.ai,
+        setupCtx.clientParams,
+        INDEXER_REF,
+        VECTOR_RETRIEVER_REF,
+        geminiModel,
+      );
 
-    await hydeRetriever.ingestDocument({
-      documents: [
+      await hydeRetriever.ingestDocument({
+        documents: [
+          {
+            text: "Planet Zeta orbits a brown dwarf. Its atmosphere consists of 80% methane.",
+          },
+        ],
+      });
+
+      const userQuestion = "What would I breathe if I visited Zeta?";
+
+      const retrievedDocs = await setupCtx.ai.retrieve({
+        retriever: HYDE_RETRIEVER_REF,
+        query: userQuestion,
+        options: { k: 3 },
+      });
+
+      const response = await setupCtx.ai.generate({
+        model: geminiModel,
+        prompt: `${hydeRetriever.getSystemPrompt()}\n\nUser Question: ${userQuestion}`,
+        docs: retrievedDocs,
+      });
+
+      const answer = response.text.toLowerCase();
+      expect(answer).toContain("methane");
+    },
+    30000,
+  );
+
+  geminiTest(
+    "retrieve with GenericGraphRagRetriever (Custom Traversal)",
+    async () => {
+      const genericRetriever = new GenericGraphRagRetriever(
+        setupCtx.ai,
+        setupCtx.clientParams,
+        INDEXER_REF,
+        VECTOR_RETRIEVER_REF,
         {
-          text: "Planet Zeta orbits a brown dwarf. Its atmosphere consists of 80% methane.",
-        },
-      ],
-    });
-
-    const userQuestion = "What would I breathe if I visited Zeta?";
-
-    const retrievedDocs = await setupCtx.ai.retrieve({
-      retriever: HYDE_RETRIEVER_REF,
-      query: userQuestion,
-      options: { k: 3 },
-    });
-
-    const response = await setupCtx.ai.generate({
-      model: geminiModel,
-      prompt: `${hydeRetriever.getSystemPrompt()}\n\nUser Question: ${userQuestion}`,
-      docs: retrievedDocs,
-    });
-
-    const answer = response.text.toLowerCase();
-    expect(answer).toContain("methane");
-  }, 30000);
-
-  test("retrieve with GenericGraphRagRetriever (Custom Traversal)", async () => {
-    const genericRetriever = new GenericGraphRagRetriever(
-      setupCtx.ai,
-      setupCtx.clientParams,
-      INDEXER_REF,
-      VECTOR_RETRIEVER_REF,
-      {
-        systemPrompt:
-          "Answer the question using ONLY the provided related context.",
-        idMetadataKey: "docId",
-        cypherIdParamName: "startIds",
-        cypherQuery: `
+          systemPrompt:
+            "Answer the question using ONLY the provided related context.",
+          idMetadataKey: "docId",
+          cypherIdParamName: "startIds",
+          cypherQuery: `
           MATCH (start:Document)-[:RELATES_TO]->(related:Document)
           WHERE start.id IN $startIds
           RETURN related.text AS customText
         `,
-        cypherReturnTextField: "customText",
-      },
-    );
+          cypherReturnTextField: "customText",
+        },
+      );
 
-    const doc1Id = "custom-doc-1";
-    const doc2Id = "custom-doc-2";
+      const doc1Id = "custom-doc-1";
+      const doc2Id = "custom-doc-2";
 
-    await setupCtx.ai.index({
-      indexer: INDEXER_REF,
-      documents: [
-        new Document({
-          content: [{ text: "The secret key is hidden in the vault." }],
-          metadata: { docId: doc1Id },
-        }),
-      ],
-    });
+      await setupCtx.ai.index({
+        indexer: INDEXER_REF,
+        documents: [
+          new Document({
+            content: [{ text: "The secret key is hidden in the vault." }],
+            metadata: { docId: doc1Id },
+          }),
+        ],
+      });
 
-    const session = genericRetriever.getNeo4jInstance().session();
-    await session.run(
-      `
+      const session = genericRetriever.getNeo4jInstance().session();
+      await session.run(
+        `
       MERGE (d1:Document {id: $doc1Id}) SET d1.text = "The secret key is hidden in the vault."
       MERGE (d2:Document {id: $doc2Id}) SET d2.text = "The vault is located behind the painting in the library."
       MERGE (d1)-[:RELATES_TO]->(d2)
     `,
-      { doc1Id, doc2Id },
-    );
-    await session.close();
+        { doc1Id, doc2Id },
+      );
+      await session.close();
 
-    const userQuestion = "Where is the vault located?";
+      const userQuestion = "Where is the vault located?";
 
-    const retrievedDocs = await genericRetriever.retrieve(userQuestion, 3);
+      const retrievedDocs = await genericRetriever.retrieve(userQuestion, 3);
 
-    expect(retrievedDocs.length).toBeGreaterThan(0);
-    expect(retrievedDocs[0].content[0].text).toContain("behind the painting");
+      expect(retrievedDocs.length).toBeGreaterThan(0);
+      expect(retrievedDocs[0].content[0].text).toContain("behind the painting");
 
-    const response = await setupCtx.ai.generate({
-      model: geminiModel,
-      prompt: `${genericRetriever.getSystemPrompt()}\n\nUser Question: ${userQuestion}`,
-      docs: retrievedDocs,
-    });
+      const response = await setupCtx.ai.generate({
+        model: geminiModel,
+        prompt: `${genericRetriever.getSystemPrompt()}\n\nUser Question: ${userQuestion}`,
+        docs: retrievedDocs,
+      });
 
-    const answer = response.text.toLowerCase();
-    expect(answer).toContain("painting");
-    expect(answer).toContain("library");
-  }, 30000);
+      const answer = response.text.toLowerCase();
+      expect(answer).toContain("painting");
+      expect(answer).toContain("library");
+    },
+    30000,
+  );
 
-  test("Custom retriever indexing works with standard Genkit Retriever and filtering", async () => {
-    const customConfigName = "sibling-search";
-    const customPrompt = "Use the sibling documents to answer the question.";
+  geminiTest(
+    "Custom retriever indexing works with standard Genkit Retriever and filtering",
+    async () => {
+      const customConfigName = "sibling-search";
+      const customPrompt = "Use the sibling documents to answer the question.";
 
-    configureNeo4jGraphRagRetrievers(setupCtx.ai, {
-      indexId: indexId,
-      embedder: null as any,
-      clientParams: setupCtx.clientParams,
-      customGraphRagConfigs: {
-        [customConfigName]: {
-          systemPrompt: customPrompt,
-          idMetadataKey: "docId",
-          cypherIdParamName: "startIds",
-          cypherQuery: `
+      configureNeo4jGraphRagRetrievers(setupCtx.ai, {
+        indexId: indexId,
+        embedder: null as any,
+        clientParams: setupCtx.clientParams,
+        customGraphRagConfigs: {
+          [customConfigName]: {
+            systemPrompt: customPrompt,
+            idMetadataKey: "docId",
+            cypherIdParamName: "startIds",
+            cypherQuery: `
             MATCH (start:Document)-[:SIBLING_OF]->(sibling:Document)
             WHERE start.id IN $startIds
             RETURN sibling.text AS siblingText
           `,
-          cypherReturnTextField: "siblingText",
+            cypherReturnTextField: "siblingText",
+          },
         },
-      },
-    });
+      });
 
-    const doc1Id = "sibling-doc-1";
-    const doc2Id = "sibling-doc-2";
+      const doc1Id = "sibling-doc-1";
+      const doc2Id = "sibling-doc-2";
 
-    await setupCtx.ai.index({
-      indexer: INDEXER_REF,
-      documents: [
-        new Document({
-          content: [{ text: "The treasure map is fake." }],
-          metadata: { docId: doc1Id },
-        }),
-      ],
-    });
+      await setupCtx.ai.index({
+        indexer: INDEXER_REF,
+        documents: [
+          new Document({
+            content: [{ text: "The treasure map is fake." }],
+            metadata: { docId: doc1Id },
+          }),
+        ],
+      });
 
-    const session = setupCtx.driver.session();
-    await session.run(
-      `
+      const session = setupCtx.driver.session();
+      await session.run(
+        `
       MERGE (d1:Document {id: $doc1Id}) SET d1.text = "The treasure map is fake."
       MERGE (d2:Document {id: $doc2Id}) SET d2.text = "The real treasure map is under the floorboards."
       MERGE (d1)-[:SIBLING_OF]->(d2)
     `,
-      { doc1Id, doc2Id },
-    );
-    await session.close();
+        { doc1Id, doc2Id },
+      );
+      await session.close();
 
-    const CUSTOM_RETRIEVER_REF = neo4jCustomRetrieverRef({
-      indexId,
-      name: customConfigName,
-    });
+      const CUSTOM_RETRIEVER_REF = neo4jCustomRetrieverRef({
+        indexId,
+        name: customConfigName,
+      });
 
-    const userQuestion = "Where is the real treasure map?";
+      const userQuestion = "Where is the real treasure map?";
 
-    const retrievedDocs = await setupCtx.ai.retrieve({
-      retriever: CUSTOM_RETRIEVER_REF,
-      query: "treasure map",
-      options: { k: 3 },
-    });
+      const retrievedDocs = await setupCtx.ai.retrieve({
+        retriever: CUSTOM_RETRIEVER_REF,
+        query: "treasure map",
+        options: { k: 3 },
+      });
 
-    expect(retrievedDocs.length).toBeGreaterThan(0);
-    expect(retrievedDocs[0].content[0].text).toContain("floorboards");
+      expect(retrievedDocs.length).toBeGreaterThan(0);
+      expect(retrievedDocs[0].content[0].text).toContain("floorboards");
 
-    const response = await setupCtx.ai.generate({
-      model: geminiModel,
-      prompt: `${customPrompt}\n\nUser Question: ${userQuestion}`,
-      docs: retrievedDocs,
-    });
+      const response = await setupCtx.ai.generate({
+        model: geminiModel,
+        prompt: `${customPrompt}\n\nUser Question: ${userQuestion}`,
+        docs: retrievedDocs,
+      });
 
-    const answer = response.text.toLowerCase();
-    expect(answer).toContain("floorboards");
-  }, 30000);
+      const answer = response.text.toLowerCase();
+      expect(answer).toContain("floorboards");
+    },
+    30000,
+  );
 
   test("ParentChildRetriever indexing works with standard Genkit Retriever and filtering", async () => {
     const pcRetriever = new ParentChildRetriever(

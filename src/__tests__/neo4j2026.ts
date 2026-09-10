@@ -1,6 +1,6 @@
 import { googleAI } from "@genkit-ai/googleai";
 import { Document, genkit } from "genkit";
-import { test, describe, expect } from "@jest/globals";
+import { test, describe, expect, jest } from "@jest/globals";
 import { neo4j, neo4jIndexerRef, neo4jRetrieverRef } from "..";
 import { mockEmbedder } from "../dummyEmbedder";
 import { setupNeo4jTestEnvironment } from "../test-utils";
@@ -10,6 +10,8 @@ import { MatchSearchClauseStrategy } from "../search-strategy";
  * This file contains integration tests for the Genkit Neo4j plugin using
  * using @testcontainers/neo4j with 2026.01.x and related features
  */
+jest.setTimeout(30000);
+
 describe("Neo4j 2026.01+ Syntax Plugin Integration", () => {
   // Initialize the before / after / beforeAll / afterAll
   const setupCtx = setupNeo4jTestEnvironment();

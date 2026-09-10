@@ -1,7 +1,9 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, test, jest } from "@jest/globals";
 import { Session } from "neo4j-driver";
 import { Neo4jSessionStore, Neo4jSessionStoreConfig } from "../session";
 import { setupNeo4jTestEnvironment } from "../test-utils";
+
+jest.setTimeout(30000);
 
 describe("Neo4jSessionStore", () => {
   let store: Neo4jSessionStore;
