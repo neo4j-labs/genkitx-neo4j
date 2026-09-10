@@ -1,4 +1,11 @@
-import { SessionData, SessionStore } from "@genkit-ai/ai/session";
+import {
+  GetSnapshotOptions,
+  SessionSnapshot,
+  SessionStore,
+  SessionStoreOptions,
+  SnapshotMutator,
+} from "@genkit-ai/ai/session";
+import { randomUUID } from "crypto";
 import { Driver, auth, driver as neo4jDriver } from "neo4j-driver";
 import { safeIdent } from "./filter-utils";
 
@@ -77,8 +84,11 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
       threadId: record.get("threadId"),
     }));
   }
-  async get(sessionId: string): Promise<SessionData<S> | undefined> {
+  async getSnapshot(
+    opts: GetSnapshotOptions,
+  ): Promise<SessionSnapshot<S> | undefined> {
     const session = this.driver.session({ database: this.config.database });
+    const sessionId = opts.sessionId ?? opts.snapshotId;
     try {
       const getMessageQuery = `MATCH (chatSession:\`${this.sessionLabel}\` {sessionId: $sessionId})
       WITH chatSession
@@ -119,24 +129,51 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
       });
 
       return {
-        id: sessionId,
-        state,
-        threads,
-      } as SessionData<S>;
+        snapshotId: sessionId!,
+        sessionId: sessionId!,
+        createdAt: new Date().toISOString(),
+        state: {
+          custom: {
+            state,
+            threads,
+          },
+          messages: [],
+        } as any,
+      } as SessionSnapshot<S>;
     } finally {
       await session.close();
     }
   }
 
-  async save(sessionId: string, sessionData: SessionData<S>): Promise<void> {
+  async saveSnapshot(
+    snapshotId: string | undefined,
+    mutator: SnapshotMutator<S>,
+    _options?: SessionStoreOptions,
+  ): Promise<string | null> {
     const session = this.driver.session({ database: this.config.database });
     try {
       const tx = session.beginTransaction();
+      const current = snapshotId
+        ? await this.getSnapshot({ sessionId: snapshotId })
+        : undefined;
+
+      const updated = await mutator(current);
+
+      if (!updated) {
+        await tx.rollback();
+        return null;
+      }
+
+      const sessionId = updated.sessionId ?? snapshotId ?? randomUUID();
+
       const sessionResult = await tx.run(
         `MERGE (s:\`${this.sessionLabel}\` {sessionId: $sessionId})
          SET s.state = $state
          RETURN s`,
-        { sessionId, state: JSON.stringify(sessionData.state) },
+        {
+          sessionId,
+          state: JSON.stringify((updated.state?.custom as any)?.state ?? {}),
+        },
       );
       const sessionNodeId = sessionResult.records[0].get("s").identity;
 
@@ -154,16 +191,18 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
 
       const storedMessages = await this.getStoredMessages(tx, sessionId);
 
-      const incomingMessages = Object.entries(
-        sessionData.threads ?? {},
-      ).flatMap(([threadId, messages]) =>
-        (messages ?? []).map((msg) => ({
-          threadId,
-          msg,
-          content: JSON.stringify(msg.content),
-          role: msg.role,
-          metadata: JSON.stringify(msg.metadata || {}),
-        })),
+      const customState = updated.state?.custom as any;
+      const threads = customState?.threads || {};
+
+      const incomingMessages = Object.entries(threads).flatMap(
+        ([threadId, messages]: [string, any]) =>
+          (messages ?? []).map((msg: any) => ({
+            threadId,
+            msg,
+            content: JSON.stringify(msg.content),
+            role: msg.role,
+            metadata: JSON.stringify(msg.metadata || {}),
+          })),
       );
 
       const incomingStartsWithStoredHistory =
@@ -224,6 +263,7 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
       }
 
       await tx.commit();
+      return snapshotId ?? sessionId;
     } finally {
       await session.close();
     }

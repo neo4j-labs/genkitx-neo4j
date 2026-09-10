@@ -1,4 +1,4 @@
-import { googleAI } from "@genkit-ai/googleai";
+import { googleAI } from "@genkit-ai/google-genai";
 import { Document, genkit } from "genkit";
 import { test, describe, expect, jest } from "@jest/globals";
 import { neo4j, neo4jIndexerRef, neo4jRetrieverRef } from "..";
