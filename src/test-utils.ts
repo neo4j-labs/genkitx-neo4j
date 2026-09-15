@@ -3,7 +3,7 @@ import { Neo4jContainer, StartedNeo4jContainer } from "@testcontainers/neo4j";
 import { Wait } from "testcontainers";
 import { driver as neo4jDriver, auth, Driver, Session } from "neo4j-driver";
 import { genkit } from "genkit";
-import { gemini15Flash, googleAI } from "@genkit-ai/googleai";
+import { googleAI } from "@genkit-ai/google-genai";
 import { neo4j } from ".";
 import { mockEmbedder } from "./dummyEmbedder";
 
