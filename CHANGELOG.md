@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/neo4j-labs/genkitx-neo4j/compare/genkitx-neo4j-v0.6.0...genkitx-neo4j-v0.6.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* use Node 24 in release workflow for trusted publishing ([4337969](https://github.com/neo4j-labs/genkitx-neo4j/commit/4337969cf2d518d09a2135b688646cf914102703))
+
 ## [0.6.0](https://github.com/neo4j-labs/genkitx-neo4j/compare/genkitx-neo4j-v0.5.17...genkitx-neo4j-v0.6.0) (2026-09-16)
 
 
