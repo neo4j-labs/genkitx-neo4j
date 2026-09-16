@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/neo4j-labs/genkitx-neo4j/compare/genkitx-neo4j-v0.6.1...genkitx-neo4j-v0.6.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* use registry.npmjs.org URLs in package-lock.json ([23cb5c1](https://github.com/neo4j-labs/genkitx-neo4j/commit/23cb5c1ecff4d05293a5e12c2027800e0ab0684c))
+
 ## [0.6.1](https://github.com/neo4j-labs/genkitx-neo4j/compare/genkitx-neo4j-v0.6.0...genkitx-neo4j-v0.6.1) (2026-09-16)
 
 
