@@ -29,14 +29,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/neo4j-partners/genkitx-neo4j.git",
+    "url": "https://github.com/neo4j-labs/genkitx-neo4j.git",
     "directory": "./"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.42.0",
     "dotenv": "^17.4.2",
     "genkitx-chromadb": "^1.42.0",
-    "genkitx-neo4j": "^0.5.17",
     "llm-chunk": "^0.0.1",
     "neo4j-driver": "^6.2.0",
     "uuid": "^10.0.0",

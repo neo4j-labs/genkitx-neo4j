@@ -28,8 +28,9 @@ jobs:
         with:
           node-version: 20
           registry-url: "https://registry.npmjs.org"
+      # Trusted Publishing requires npm CLI >= 11.5.1 (node 20 ships npm 10)
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
+      # Publishes via npm Trusted Publishing (OIDC) using id-token: write — no NPM_TOKEN needed
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,7 +1,7 @@
 import { genkit, Document } from "genkit";
 import { v4 as uuidv4 } from "uuid";
 import * as neo4j_driver from "neo4j-driver";
-import { Neo4jGraphConfig } from "genkitx-neo4j";
+import { Neo4jGraphConfig } from "./index";
 
 function serializeMetadata(metadata?: Record<string, unknown>): string {
   return JSON.stringify(metadata ?? {});
