@@ -17,6 +17,11 @@
   "license": "Apache-2.0",
   "description": "Genkit AI framework plugin for Neo4j Graph database",
   "type": "commonjs",
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "check": "tsc",
