@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/neo4j-labs/genkitx-neo4j/compare/genkitx-neo4j-v0.6.2...genkitx-neo4j-v0.6.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* include lib artifacts in npm package ([#37](https://github.com/neo4j-labs/genkitx-neo4j/issues/37)) ([307349c](https://github.com/neo4j-labs/genkitx-neo4j/commit/307349c20479e9f0d717b950cc641f581bbbe8a3))
+
 ## [0.6.2](https://github.com/neo4j-labs/genkitx-neo4j/compare/genkitx-neo4j-v0.6.1...genkitx-neo4j-v0.6.2) (2026-09-16)
 
 
