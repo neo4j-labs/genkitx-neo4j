@@ -1,7 +1,9 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, test, jest } from "@jest/globals";
 import { Session } from "neo4j-driver";
 import { Neo4jSessionStore, Neo4jSessionStoreConfig } from "../session";
 import { setupNeo4jTestEnvironment } from "../test-utils";
+
+jest.setTimeout(30000);
 
 describe("Neo4jSessionStore", () => {
   let store: Neo4jSessionStore;
@@ -14,6 +16,7 @@ describe("Neo4jSessionStore", () => {
     messageLabel: "MessageTest",
     nextMessageRelType: "NEXT_TEST",
     lastMessageRelType: "LAST_MESSAGE_TEST",
+    firstMessageRelType: "FIRST_MESSAGE_TEST",
   };
 
   const setupCtx = setupNeo4jTestEnvironment(
@@ -46,7 +49,17 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await store.save(sessionId, sessionData);
+    await store.saveSnapshot(sessionId, () => ({
+      sessionId,
+      createdAt: new Date().toISOString(),
+      state: {
+        custom: {
+          state: sessionData.state,
+          threads: sessionData.threads,
+        },
+        messages: [],
+      },
+    }));
 
     // Verify the graph structure: 1 Session Node, 2 Message Nodes, and relationships
     const graphResult = await setupCtx.session.run(
@@ -63,8 +76,13 @@ describe("Neo4jSessionStore", () => {
     expect(firstNode).toBeDefined();
 
     // Verify the retrieved data via the get method
-    const retrievedData = await store.get(sessionId);
-    expect(retrievedData).toEqual(sessionData);
+    const retrievedData = await store.getSnapshot({ sessionId });
+    expect(retrievedData?.sessionId).toBe(sessionId);
+    expect(retrievedData?.state?.custom).toEqual({
+      state: sessionData.state,
+      threads: sessionData.threads,
+    });
+    expect(retrievedData?.state?.messages).toEqual([]);
   });
 
   test("should save and retrieve first 2 session message data and verify the graph structure", async () => {
@@ -115,7 +133,17 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await store.save(sessionId, sessionData);
+    await store.saveSnapshot(sessionId, () => ({
+      sessionId,
+      createdAt: new Date().toISOString(),
+      state: {
+        custom: {
+          state: sessionData.state,
+          threads: sessionData.threads,
+        },
+        messages: [],
+      },
+    }));
 
     // -- set window size 2
     store.setWindowSize(2);
@@ -135,19 +163,22 @@ describe("Neo4jSessionStore", () => {
     expect(firstNode).toBeDefined();
 
     // Verify the retrieved data via the get method
-    const retrievedData = await store.get(sessionId);
+    const retrievedData = await store.getSnapshot({ sessionId });
 
     // expected only first 4 messages (in TCK mode, forward traversal limits grab the HEAD of the chain)
     const expectedRetrievedData = {
       id: sessionId,
       state: { user: "Bob" },
       threads: {
-        main: [
-          firstMessage, secondMessage, thirdMessage, fourthMessage,
-        ],
+        main: [firstMessage, secondMessage, thirdMessage, fourthMessage],
       },
     };
-    expect(retrievedData).toEqual(expectedRetrievedData);
+    expect(retrievedData?.sessionId).toBe(sessionId);
+    expect(retrievedData?.state?.custom).toEqual({
+      state: expectedRetrievedData.state,
+      threads: expectedRetrievedData.threads,
+    });
+    expect(retrievedData?.state?.messages).toEqual([]);
 
     // -- cleanup: reset with default size
     store.setWindowSize(Neo4jSessionStore.DEFAULT_SIZE);
@@ -169,7 +200,17 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await store.save(sessionId, sessionData);
+    await store.saveSnapshot(sessionId, () => ({
+      sessionId,
+      createdAt: new Date().toISOString(),
+      state: {
+        custom: {
+          state: sessionData.state,
+          threads: sessionData.threads,
+        },
+        messages: [],
+      },
+    }));
 
     // -- set size 1
     store.setWindowSize(2);
@@ -190,14 +231,19 @@ describe("Neo4jSessionStore", () => {
     expect(firstNode).toBeDefined();
 
     // Verify the retrieved data via the get method
-    const retrievedData = await store.get(sessionId);
+    const retrievedData = await store.getSnapshot({ sessionId });
 
-    expect(retrievedData).toEqual(sessionData);
+    expect(retrievedData?.sessionId).toBe(sessionId);
+    expect(retrievedData?.state?.custom).toEqual({
+      state: sessionData.state,
+      threads: sessionData.threads,
+    });
+    expect(retrievedData?.state?.messages).toEqual([]);
 
     // -- delete messages
     await store.clear(sessionId);
 
-    const retrievedDataAfterDelete = await store.get(sessionId);
+    const retrievedDataAfterDelete = await store.getSnapshot({ sessionId });
     expect(retrievedDataAfterDelete).toBeUndefined();
 
     const graphResultAfterDelete = await setupCtx.session.run(
@@ -209,7 +255,7 @@ describe("Neo4jSessionStore", () => {
 
   test("should return undefined for a non-existent session", async () => {
     const sessionId = "non-existent-session";
-    const retrievedData = await store.get(sessionId);
+    const retrievedData = await store.getSnapshot({ sessionId });
     expect(retrievedData).toBeUndefined();
   });
 
@@ -225,7 +271,17 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await store.save(sessionId, initialData);
+    await store.saveSnapshot(sessionId, () => ({
+      sessionId,
+      createdAt: new Date().toISOString(),
+      state: {
+        custom: {
+          state: initialData.state,
+          threads: initialData.threads,
+        },
+        messages: [],
+      },
+    }));
 
     const updatedData = {
       id: sessionId,
@@ -237,11 +293,21 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await store.save(sessionId, updatedData);
+    await store.saveSnapshot(sessionId, (current) => ({
+      sessionId,
+      createdAt: current?.createdAt ?? new Date().toISOString(),
+      state: {
+        custom: {
+          state: updatedData.state,
+          threads: updatedData.threads,
+        },
+        messages: current?.state?.messages ?? [],
+      },
+    }));
 
     // Verify there is only 1 Session node
     const sessionNodesCount = await setupCtx.session.run(
-      `MATCH (s:\`${config.sessionLabel}\` {sessionId: $sessionId}) RETURN count(s) AS count`,
+      `MATCH (s:\`${config.sessionLabel}\` {session_id: $sessionId}) RETURN count(s) AS count`,
       { sessionId },
     );
     expect(sessionNodesCount.records[0].get("count").toInt()).toBe(1);
@@ -263,7 +329,7 @@ describe("Neo4jSessionStore", () => {
     expect(lastNodeResult.records[0].get("lastMessageContent")).toContain("hi");
 
     // Verify the retrieved data is the updated version
-    const retrievedData = await store.get(sessionId);
+    const retrievedData = await store.getSnapshot({ sessionId });
     const expectedData = updatedData;
     expectedData.threads = {
       main: [
@@ -271,7 +337,12 @@ describe("Neo4jSessionStore", () => {
         { content: [{ text: "hi" }], role: "user" as const, metadata: {} },
       ],
     };
-    expect(retrievedData).toEqual(expectedData);
+    expect(retrievedData?.sessionId).toBe(sessionId);
+    expect(retrievedData?.state?.custom).toEqual({
+      state: expectedData.state,
+      threads: expectedData.threads,
+    });
+    expect(retrievedData?.state?.messages).toEqual([]);
   });
 
   test("should work with custom node labels", async () => {
@@ -296,11 +367,21 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await customStore.save(sessionId, sessionData);
+    await customStore.saveSnapshot(sessionId, () => ({
+      sessionId,
+      createdAt: new Date().toISOString(),
+      state: {
+        custom: {
+          state: sessionData.state,
+          threads: sessionData.threads,
+        },
+        messages: [],
+      },
+    }));
 
     // Verify that the nodes were created with the custom labels
     const sessionNodeCount = await setupCtx.session.run(
-      `MATCH (s:CustomSession {sessionId: $sessionId}) RETURN count(s) AS count`,
+      `MATCH (s:CustomSession {session_id: $sessionId}) RETURN count(s) AS count`,
       { sessionId },
     );
     expect(sessionNodeCount.records[0].get("count").toInt()).toBe(1);
@@ -320,6 +401,7 @@ describe("Neo4jSessionStore", () => {
       ...config,
       nextMessageRelType: "THREAD_NEXT",
       lastMessageRelType: "THREAD_HEAD",
+      useTckFormat: false,
     };
     const customStore = new Neo4jSessionStore(customConfig);
     const sessionId = "custom-rels-session";
@@ -342,11 +424,21 @@ describe("Neo4jSessionStore", () => {
       },
     };
 
-    await customStore.save(sessionId, sessionData);
+    await customStore.saveSnapshot(sessionId, () => ({
+      sessionId,
+      createdAt: new Date().toISOString(),
+      state: {
+        custom: {
+          state: sessionData.state,
+          threads: sessionData.threads,
+        },
+        messages: [],
+      },
+    }));
 
     // Verify that the custom relationships exist
     const relResult = await setupCtx.session.run(
-      `MATCH (s:\`${config.sessionLabel}\` {sessionId: $sessionId})-[:THREAD_HEAD]->(lastMsg)
+      `MATCH (s:\`${config.sessionLabel}\` {session_id: $sessionId})-[:THREAD_HEAD]->(lastMsg)
        MATCH (s)-[:THREAD_HEAD]->(lastMsg)<-[:THREAD_NEXT]-(firstMsg)
        RETURN count(lastMsg) as lastMsgCount, count(firstMsg) as firstMsgCount`,
       { sessionId },

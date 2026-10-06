@@ -1,5 +1,5 @@
 import { Document, genkit } from "genkit";
-import { test, describe, expect } from "@jest/globals";
+import { test, describe, expect, jest } from "@jest/globals";
 import {
   configureNeo4jGraphRagRetrievers,
   neo4j,
@@ -17,8 +17,16 @@ import {
   HypotheticalQuestionRetriever,
   ParentChildRetriever,
 } from "../rag-utils";
-import { geminiModel, setupNeo4jTestEnvironment } from "../test-utils";
-import { googleAI } from "@genkit-ai/googleai";
+import { setupNeo4jTestEnvironment } from "../test-utils";
+import { geminiModel } from "../utils";
+import { googleAI } from "@genkit-ai/google-genai";
+jest.setTimeout(30000);
+
+// const hasGeminiApiKey = Boolean(
+//   process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
+// );
+
+// const geminiTest = hasGeminiApiKey ? test : test.skip;
 
 /**
  * This file contains integration tests for the Genkit Neo4j plugin.
@@ -786,8 +794,8 @@ describe("Neo4j Plugin Integration", () => {
 });
 
 describe("Neo4j Agent Memory Tools (Long-Term Memory)", () => {
-  const indexId = 'agent-memory-index';
-  const setupCtx = setupNeo4jTestEnvironment('5.26.16', indexId);
+  const indexId = "agent-memory-index";
+  const setupCtx = setupNeo4jTestEnvironment("5.26.16", indexId);
 
   test("should register and execute add and search memory tools correctly", async () => {
     /*
@@ -808,7 +816,5 @@ describe("Neo4j Agent Memory Tools (Long-Term Memory)", () => {
     });
     
     */
-    
-
-  })
-})
+  });
+});

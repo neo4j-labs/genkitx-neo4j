@@ -61,7 +61,7 @@ npm install @neo4j-labs/agent-memory
 In the cloned agent-memory repository folder (not in the project folder):
 
 ```bash
-export NEO4J_PASSWORD=my_secret_password 
+export NEO4J_PASSWORD=my_secret_password
 make conformance-python
 ```
 
@@ -109,39 +109,39 @@ npx tsx test-integration.ts
 
 ### Manual tool testing
 
-* Calls tools directly without LLM
+- Calls tools directly without LLM
+
 ```bash
 npx tsx comprehensive.ts
 ```
 
-
 ### Agentic testing
 
-* Basic test uses an LLM to orchestrate tools (with Google Gemini)
+- Basic test uses an LLM to orchestrate tools (with Google Gemini)
 
 ```bash
 npx tsx test-agent.ts
 ```
 
+- More comprehensive an LLM to orchestrate tools (with Google Gemini)
 
-* More comprehensive an LLM to orchestrate tools (with Google Gemini)
 ```bash
 npx test-omni-agentic.ts
 ```
 
-* Uses an LLM to orchestrate tools (with OpenAI)
+- Uses an LLM to orchestrate tools (with OpenAI)
+
 ```bash
 npx test-omni-agentic-openai
 ```
 
-
 ### End-to-end testing
 
-* Full session and memory integration with [session.ts](./src/session.ts)
+- Full session and memory integration with [session.ts](./src/session.ts)
+
 ```bash
 npx test-omni.ts
 ```
-
 
 ### Test with reasoning memory
 
@@ -151,33 +151,33 @@ npx test-comprehensive.ts
 
 ### Multi-index isolation
 
-* Ensures separation between indexes
+- Ensures separation between indexes
 
 ## Available tools
 
 ### Short-term
 
-* addMemoryMessage
-* getMemoryConversation
-* listMemorySessions
-* clearMemorySession
+- addMemoryMessage
+- getMemoryConversation
+- listMemorySessions
+- clearMemorySession
 
 ### Long-term
 
-* addMemoryEntity
-* addMemoryFact
-* addMemoryPreference
-* addMemoryRelationship
-* searchMemoryEntities
-* getRelatedMemoryEntities
-* mergeDuplicateMemoryEntities
+- addMemoryEntity
+- addMemoryFact
+- addMemoryPreference
+- addMemoryRelationship
+- searchMemoryEntities
+- getRelatedMemoryEntities
+- mergeDuplicateMemoryEntities
 
 ### Reasoning
 
-* startReasoningTrace
-* addReasoningStep
-* recordMemoryToolCall
-* completeReasoningTrace
+- startReasoningTrace
+- addReasoningStep
+- recordMemoryToolCall
+- completeReasoningTrace
 
 ## Known issues
 
@@ -185,8 +185,8 @@ npx test-comprehensive.ts
 
 There is a naming mismatch:
 
-* TypeScript / TCK uses `properties`
-* Python library uses `attributes`
+- TypeScript / TCK uses `properties`
+- Python library uses `attributes`
 
 The adapter maps `attributes` to `properties`.
 
@@ -194,10 +194,10 @@ Use `properties` in TypeScript.
 
 ## Improvements
 
-* Single connection initialization
-* Fixed addRelationship parameter bug
-* Default port aligned to 3001
-* Improved schemas for LLM usage
+- Single connection initialization
+- Fixed addRelationship parameter bug
+- Default port aligned to 3001
+- Improved schemas for LLM usage
 
 ## Neo4j configuration
 
@@ -212,20 +212,18 @@ export NEO4J_PASSWORD=password
 ### Genkit configuration
 
 ```ts
-clientParams: { 
-  url: 'bolt://localhost:7687', 
-  username: 'neo4j', 
-  password: 'your_password' 
+clientParams: {
+  url: 'bolt://localhost:7687',
+  username: 'neo4j',
+  password: 'your_password'
 }
 ```
 
 ## Verification
 
-* Short-term memory works
-* Long-term memory works
-* Reasoning traces work
+- Short-term memory works
+- Long-term memory works
+- Reasoning traces work
 
-
-* Align messageLabel with TCK
-* Make long-term memory optional
-
+- Align messageLabel with TCK
+- Make long-term memory optional

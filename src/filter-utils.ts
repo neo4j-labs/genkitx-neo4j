@@ -24,7 +24,15 @@ const SUPPORTED_OPERATORS = new Set([
   ...SPECIAL_CASED_OPERATORS,
 ]);
 
-const IS_IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const IS_IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
+
+export function safeIdent(name: string): string {
+  if (!IS_IDENTIFIER_REGEX.test(name)) {
+    throw new Error(`Unsafe identifier: ${name}`);
+  }
+
+  return name;
+}
 
 function combineQueries(
   inputQueries: [string, Record<string, any>][],

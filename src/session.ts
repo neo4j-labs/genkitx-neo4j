@@ -1,5 +1,13 @@
-import { SessionData, SessionStore } from "@genkit-ai/ai/session";
+import {
+  GetSnapshotOptions,
+  SessionSnapshot,
+  SessionStore,
+  SessionStoreOptions,
+  SnapshotMutator,
+} from "@genkit-ai/ai/session";
+import { randomUUID } from "crypto";
 import { Driver, auth, driver as neo4jDriver } from "neo4j-driver";
+import { safeIdent } from "./filter-utils";
 
 export interface Neo4jSessionStoreConfig {
   url: string;
@@ -29,16 +37,28 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
 
   constructor(config: Neo4jSessionStoreConfig) {
     this.config = config;
+
     this.useTckFormat = config.useTckFormat ?? true;
-    this.sessionLabel = config.sessionLabel || (this.useTckFormat ? 'Session' : 'GenkitSession');
-    this.messageLabel = config.messageLabel || 'Message';
-    this.nextMessageRelType = config.nextMessageRelType || (this.useTckFormat ? 'NEXT_MESSAGE' : 'NEXT');
-    this.lastMessageRelType = config.lastMessageRelType || 'LAST_MESSAGE';
-    this.firstMessageRelType = config.firstMessageRelType || 'FIRST_MESSAGE';
-    this.sessionLabel = config.sessionLabel || "GenkitSession";
-    this.messageLabel = config.messageLabel || "Message";
-    this.nextMessageRelType = config.nextMessageRelType || "NEXT";
-    this.lastMessageRelType = config.lastMessageRelType || "LAST_MESSAGE";
+
+    this.sessionLabel = safeIdent(
+      config.sessionLabel || (this.useTckFormat ? "Session" : "GenkitSession"),
+    );
+
+    this.messageLabel = safeIdent(config.messageLabel || "Message");
+
+    this.nextMessageRelType = safeIdent(
+      config.nextMessageRelType ||
+        (this.useTckFormat ? "NEXT_MESSAGE" : "NEXT"),
+    );
+
+    this.lastMessageRelType = safeIdent(
+      config.lastMessageRelType || "LAST_MESSAGE",
+    );
+
+    this.firstMessageRelType = safeIdent(
+      config.firstMessageRelType || "FIRST_MESSAGE",
+    );
+
     this.driver = neo4jDriver(
       this.config.url,
       auth.basic(this.config.username, this.config.password || ""),
@@ -50,9 +70,45 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
   public setWindowSize(size: number) {
     this.windowSize = size;
   }
+  private async getStoredMessages(
+    tx: any,
+    sessionId: string,
+  ): Promise<
+    Array<{
+      content: string;
+      role: string;
+      metadata: string;
+      threadId: string;
+    }>
+  > {
+    const result = await tx.run(
+      `MATCH (s:\`${this.sessionLabel}\` {sessionId: $sessionId})
+     OPTIONAL MATCH (s)-[:${this.lastMessageRelType}]->(lastMessage)
+     OPTIONAL MATCH p=(firstMessage)-[:${this.nextMessageRelType}*0..]->(lastMessage)
+     WITH p
+     ORDER BY length(p) DESC
+     LIMIT 1
+     WITH CASE WHEN p IS NULL THEN [] ELSE nodes(p) END AS messages
+     UNWIND messages AS message
+     RETURN message.content AS content,
+            message.role AS role,
+            message.metadata AS metadata,
+            message.threadId AS threadId`,
+      { sessionId },
+    );
 
-  async get(sessionId: string): Promise<SessionData<S> | undefined> {
+    return result.records.map((record: any) => ({
+      content: record.get("content"),
+      role: record.get("role"),
+      metadata: record.get("metadata"),
+      threadId: record.get("threadId"),
+    }));
+  }
+  async getSnapshot(
+    opts: GetSnapshotOptions,
+  ): Promise<SessionSnapshot<S> | undefined> {
     const session = this.driver.session({ database: this.config.database });
+    const sessionId = opts.sessionId ?? opts.snapshotId;
     try {
       const getMessageQuery = this.useTckFormat
         ? `MATCH (chatSession:\`${this.sessionLabel}\` {session_id: $sessionId})
@@ -71,22 +127,19 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
           ORDER BY length DESC LIMIT 1
           UNWIND reverse(nodes(p)) AS messageNode
           RETURN chatSession.state AS state, messageNode`;
-      const result = await session.run(
-        getMessageQuery,
-        { sessionId }
-      );
+      const result = await session.run(getMessageQuery, { sessionId });
 
       if (result.records.length === 0) {
         return undefined;
       }
 
       const record = result.records[0];
-      const state = JSON.parse(record.get('state') || '{}');
-      const messages: any[] = result.records.map(r => {
-        const node = r.get('messageNode');
+      const state = JSON.parse(record.get("state") || "{}");
+      const messages: any[] = result.records.map((r) => {
+        const node = r.get("messageNode");
         let role = node.properties.role;
-        if (this.useTckFormat && role === 'assistant') {
-          role = 'model';
+        if (this.useTckFormat && role === "assistant") {
+          role = "model";
         }
         return {
           content: JSON.parse(node.properties.content),
@@ -109,24 +162,51 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
       });
 
       return {
-        id: sessionId,
-        state,
-        threads,
-      } as SessionData<S>;
+        snapshotId: sessionId!,
+        sessionId: sessionId!,
+        createdAt: new Date().toISOString(),
+        state: {
+          custom: {
+            state,
+            threads,
+          },
+          messages: [],
+        } as any,
+      } as SessionSnapshot<S>;
     } finally {
       await session.close();
     }
   }
 
-  async save(sessionId: string, sessionData: SessionData<S>): Promise<void> {
+  async saveSnapshot(
+    snapshotId: string | undefined,
+    mutator: SnapshotMutator<S>,
+    _options?: SessionStoreOptions,
+  ): Promise<string | null> {
     const session = this.driver.session({ database: this.config.database });
     try {
       const tx = session.beginTransaction();
+      const current = snapshotId
+        ? await this.getSnapshot({ sessionId: snapshotId })
+        : undefined;
+
+      const updated = await mutator(current);
+
+      if (!updated) {
+        await tx.rollback();
+        return null;
+      }
+
+      const sessionId = updated.sessionId ?? snapshotId ?? randomUUID();
+
       const sessionResult = await tx.run(
         `MERGE (s:\`${this.sessionLabel}\` {session_id: $sessionId})
          SET s.state = $state
          RETURN s`,
-        { sessionId, state: JSON.stringify(sessionData.state) },
+        {
+          sessionId,
+          state: JSON.stringify((updated.state?.custom as any)?.state ?? {}),
+        },
       );
       const sessionNodeId = sessionResult.records[0].get("s").identity;
 
@@ -134,37 +214,70 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
 
       const findLastNodeResult = this.useTckFormat
         ? await tx.run(
-          `MATCH (s:\`${this.sessionLabel}\` {session_id: $sessionId})
+            `MATCH (s:\`${this.sessionLabel}\` {session_id: $sessionId})
              OPTIONAL MATCH (s)-[:${this.firstMessageRelType}]->(firstNode)-[:${this.nextMessageRelType}*0..]->(lastNode)
              WHERE NOT (lastNode)-[:${this.nextMessageRelType}]->()
              RETURN lastNode`,
-          { sessionId }
-        )
+            { sessionId },
+          )
         : await tx.run(
-          `MATCH (s:\`${this.sessionLabel}\` {session_id: $sessionId})
+            `MATCH (s:\`${this.sessionLabel}\` {session_id: $sessionId})
              OPTIONAL MATCH (s)-[r:\`${this.lastMessageRelType}\`]->(lastNode)
              RETURN lastNode`,
-          { sessionId }
-        );
+            { sessionId },
+          );
 
-      if (findLastNodeResult.records[0] && findLastNodeResult.records[0].get('lastNode')) {
-        lastNodeId = findLastNodeResult.records[0].get('lastNode').identity;
+      if (
+        findLastNodeResult.records[0] &&
+        findLastNodeResult.records[0].get("lastNode")
+      ) {
+        lastNodeId = findLastNodeResult.records[0].get("lastNode").identity;
       }
 
-      for (const threadId in sessionData.threads) {
-        const messages = sessionData.threads[threadId];
+      const storedMessages = await this.getStoredMessages(tx, sessionId);
 
-        for (const msg of messages) {
-          const content = JSON.stringify(msg.content);
-          const metadata = JSON.stringify(msg.metadata || {});
-          let roleToSave: string = msg.role;
-          if (this.useTckFormat && msg.role === 'model') {
-            roleToSave = 'assistant';
-          }
+      const customState = updated.state?.custom as any;
+      const threads = customState?.threads || {};
 
-          const createMessageResult = await tx.run(
-            `CREATE (m:\`${this.messageLabel}\` {
-               ${this.useTckFormat ? 'id: randomUUID(),' : ''}
+      const incomingMessages = Object.entries(threads).flatMap(
+        ([threadId, messages]: [string, any]) =>
+          (messages ?? []).map((msg: any) => ({
+            threadId,
+            msg,
+            content: JSON.stringify(msg.content),
+            role: msg.role,
+            metadata: JSON.stringify(msg.metadata || {}),
+          })),
+      );
+
+      const incomingStartsWithStoredHistory =
+        incomingMessages.length >= storedMessages.length &&
+        storedMessages.every((stored, index) => {
+          const incoming = incomingMessages[index];
+
+          return (
+            incoming &&
+            incoming.threadId === stored.threadId &&
+            incoming.content === stored.content &&
+            incoming.role === stored.role &&
+            incoming.metadata === stored.metadata
+          );
+        });
+
+      const messagesToAppend = incomingStartsWithStoredHistory
+        ? incomingMessages.slice(storedMessages.length)
+        : incomingMessages;
+
+      for (const { threadId, msg, content, metadata } of messagesToAppend) {
+        let roleToSave = msg.role;
+
+        if (this.useTckFormat && roleToSave === "model") {
+          roleToSave = "assistant";
+        }
+
+        const createMessageResult = await tx.run(
+          `CREATE (m:\`${this.messageLabel}\` {
+
                content: $content,
                role: $role,
                metadata: $metadata,
@@ -172,29 +285,28 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
                timestamp: timestamp()
              })
              RETURN m`,
-            { content, role: roleToSave, metadata, threadId }
-          );
+          { content, role: roleToSave, metadata, threadId },
+        );
 
-          const newMessageNodeId =
-            createMessageResult.records[0].get("m").identity;
+        const newMessageNodeId =
+          createMessageResult.records[0].get("m").identity;
 
-          if (lastNodeId !== null) {
-            await tx.run(
-              `MATCH (n1), (n2)
+        if (lastNodeId !== null) {
+          await tx.run(
+            `MATCH (n1), (n2)
                WHERE id(n1) = $lastNodeId AND id(n2) = $newMessageNodeId
                CREATE (n1)-[:${this.nextMessageRelType}]->(n2)`,
-              { lastNodeId, newMessageNodeId },
-            );
-          } else if (this.useTckFormat) {
-            await tx.run(
-              `MATCH (s:\`${this.sessionLabel}\` {session_id: $sessionId})
+            { lastNodeId, newMessageNodeId },
+          );
+        } else if (this.useTckFormat) {
+          await tx.run(
+            `MATCH (s:\`${this.sessionLabel}\` {session_id: $sessionId})
                MATCH (m) WHERE id(m) = $newMessageNodeId
                CREATE (s)-[:${this.firstMessageRelType}]->(m)`,
-              { sessionId, newMessageNodeId }
-            );
-          }
-          lastNodeId = newMessageNodeId;
+            { sessionId, newMessageNodeId },
+          );
         }
+        lastNodeId = newMessageNodeId;
       }
 
       if (!this.useTckFormat && lastNodeId !== null) {
@@ -210,8 +322,7 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
       }
 
       await tx.commit();
-
-      await tx.commit();
+      return snapshotId ?? sessionId;
     } finally {
       await session.close();
     }
@@ -222,11 +333,12 @@ export class Neo4jSessionStore<S = any> implements SessionStore<S> {
     try {
       const clearQuery = this.useTckFormat
         ? `MATCH p=(chatSession:${this.sessionLabel} {session_id: $sessionId})-[:${this.firstMessageRelType}]->(firstMessage)-[:${this.nextMessageRelType}*0..]->()
-           UNWIND nodes(p) as node
-           DETACH DELETE node`
+     UNWIND nodes(p) as node
+     DETACH DELETE node`
         : `MATCH p=(chatSession:${this.sessionLabel} {session_id: $sessionId})-[:${this.lastMessageRelType}]->(lastMessage)<-[:${this.nextMessageRelType}*0..]-()
-           UNWIND nodes(p) as node
-           DETACH DELETE node`;
+     UNWIND nodes(p) as node
+     DETACH DELETE node`;
+
       await session.run(clearQuery, { sessionId });
     } finally {
       await session.close();
