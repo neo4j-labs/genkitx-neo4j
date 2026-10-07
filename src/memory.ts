@@ -250,6 +250,13 @@ export async function configureNeo4jAgentMemoryTools<
     },
   );
 
+  // Temporarily disabled due to an upstream Agent Memory / TCK issue:
+// AttributeError: 'Relationship' object has no attribute 'properties'.
+// Re-enable after upstream fix.
+
+  const ENABLE_RELATIONSHIP_TOOL = false;
+
+  if (ENABLE_RELATIONSHIP_TOOL) {
   ai.defineTool(
     {
       name: `neo4j/${indexId}/addMemoryRelationship`,
@@ -281,6 +288,7 @@ export async function configureNeo4jAgentMemoryTools<
       return `Relationship '${input.type}' created between '${input.sourceId}' and '${input.targetId}'.`;
     },
   );
+}
 
   ai.defineTool(
     {
