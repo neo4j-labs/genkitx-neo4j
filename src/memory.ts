@@ -251,44 +251,44 @@ export async function configureNeo4jAgentMemoryTools<
   );
 
   // Temporarily disabled due to an upstream Agent Memory / TCK issue:
-// AttributeError: 'Relationship' object has no attribute 'properties'.
-// Re-enable after upstream fix.
+  // AttributeError: 'Relationship' object has no attribute 'properties'.
+  // Re-enable after upstream fix.
 
   const ENABLE_RELATIONSHIP_TOOL = false;
 
   if (ENABLE_RELATIONSHIP_TOOL) {
-  ai.defineTool(
-    {
-      name: `neo4j/${indexId}/addMemoryRelationship`,
-      description:
-        "Create a semantic relationship between two entities in the Knowledge Graph.",
-      inputSchema: z.object({
-        sourceId: z.string().describe("The ID or name of the source entity"),
-        targetId: z.string().describe("The ID or name of the target entity"),
-        type: z
-          .string()
-          .describe(
-            "The type of relationship (e.g. 'WORKS_FOR', 'FRIEND_OF'). Use UPPER_SNAKE_CASE.",
-          ),
-        properties: z
-          .record(z.any())
-          .optional()
-          .describe("Optional properties/metadata for the relationship"),
-      }),
-    },
-    async (input) => {
-      const sourceId = await resolveId(input.sourceId);
-      const targetId = await resolveId(input.targetId);
-      await memoryClient.longTerm.addRelationship(
-        sourceId,
-        targetId,
-        input.type,
-        { properties: input.properties },
-      );
-      return `Relationship '${input.type}' created between '${input.sourceId}' and '${input.targetId}'.`;
-    },
-  );
-}
+    ai.defineTool(
+      {
+        name: `neo4j/${indexId}/addMemoryRelationship`,
+        description:
+          "Create a semantic relationship between two entities in the Knowledge Graph.",
+        inputSchema: z.object({
+          sourceId: z.string().describe("The ID or name of the source entity"),
+          targetId: z.string().describe("The ID or name of the target entity"),
+          type: z
+            .string()
+            .describe(
+              "The type of relationship (e.g. 'WORKS_FOR', 'FRIEND_OF'). Use UPPER_SNAKE_CASE.",
+            ),
+          properties: z
+            .record(z.any())
+            .optional()
+            .describe("Optional properties/metadata for the relationship"),
+        }),
+      },
+      async (input) => {
+        const sourceId = await resolveId(input.sourceId);
+        const targetId = await resolveId(input.targetId);
+        await memoryClient.longTerm.addRelationship(
+          sourceId,
+          targetId,
+          input.type,
+          { properties: input.properties },
+        );
+        return `Relationship '${input.type}' created between '${input.sourceId}' and '${input.targetId}'.`;
+      },
+    );
+  }
 
   ai.defineTool(
     {
