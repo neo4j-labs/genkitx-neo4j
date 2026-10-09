@@ -1,5 +1,7 @@
 # genkitx-neo4j - Neo4j plugin for Genkit
 
+> This is an experimental Neo4j Labs project and not part of Neo4j's supported product lineup. See the [Neo4j Labs disclaimer](./LABS_DISCLAIMER.txt).
+
 This is a Neo4j plugin for Genkit, providing vector indexing and retrieval capabilities.
 
 ## Installation
