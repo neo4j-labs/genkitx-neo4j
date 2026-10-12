@@ -792,29 +792,3 @@ describe("Neo4j Plugin Integration", () => {
     expect(docs).toHaveLength(0);
   });
 });
-
-describe("Neo4j Agent Memory Tools (Long-Term Memory)", () => {
-  const indexId = "agent-memory-index";
-  const setupCtx = setupNeo4jTestEnvironment("5.26.16", indexId);
-
-  test("should register and execute add and search memory tools correctly", async () => {
-    /*
-    TODO - test using `enableAgentMemoryTools: true`, e.g.:
-
-    setupCtx.ai = genkit({
-      plugins: [
-        googleAI(),
-        neo4j([
-          {
-            indexId,
-            embedder: mockEmbedder,
-            clientParams: setupCtx.clientParams,
-            enableAgentMemoryTools: true,
-          },
-        ]),
-      ],
-    });
-    
-    */
-  });
-});
