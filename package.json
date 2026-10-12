@@ -39,24 +39,38 @@
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.42.0",
+    "@genkit-ai/googleai": "^1.19.2",
     "dotenv": "^17.4.2",
     "genkitx-chromadb": "^1.42.0",
+    "genkitx-neo4j": "^0.5.17",
+    "genkitx-openai": "^0.30.0",
     "llm-chunk": "^0.0.1",
     "neo4j-driver": "^6.2.0",
     "uuid": "^10.0.0",
     "zod": "^3.22.4"
   },
   "peerDependencies": {
+    "@neo4j-labs/agent-memory": "^0.4.1",
     "genkit": "^1.42.0"
   },
+  "peerDependenciesMeta": {
+    "@neo4j-labs/agent-memory": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@genkit-ai/google-genai": "^1.33.0",
+    "@genkit-ai/googleai": "^1.21.0",
     "@jest/globals": "^30.1.2",
+    "@neo4j-labs/agent-memory": "^0.4.1",
     "@testcontainers/neo4j": "^11.8.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.17.28",
     "@types/uuid": "^9.0.6",
+    "genkit": "^1.42.0",
     "jest": "^29.7.0",
     "jest-runner-tsd": "^6.0.0",
+    "llm-chunk": "^0.0.1",
     "npm-run-all": "^4.1.5",
     "prettier": "3.5.3",
     "rimraf": "^6.0.1",

@@ -35,6 +35,7 @@ import {
   GraphRagConfig,
 } from "./rag-utils";
 import { safeIdent } from "./filter-utils";
+import { configureNeo4jAgentMemoryTools } from "./memory";
 
 export const FULLTEXT_INDEX_SUFFIX = "__fulltext";
 export const errorMetadataAndHybrid =
@@ -137,6 +138,7 @@ export interface Neo4jParams<EmbedderCustomOptions extends z.ZodTypeAny> {
   filterMetadata?: string[];
   ragModel?: any;
   customGraphRagConfigs?: Record<string, GraphRagConfig>;
+  enableAgentMemoryTools?: boolean;
 }
 
 export function neo4j<EmbedderCustomOptions extends z.ZodTypeAny>(
@@ -148,6 +150,12 @@ export function neo4j<EmbedderCustomOptions extends z.ZodTypeAny>(
 
     params.map((i) => configureNeo4jGraphRagRetrievers(ai, i));
     params.map((i) => configureNeo4jGraphRagTools(ai, i));
+
+    for (const i of params) {
+      if (i.enableAgentMemoryTools) {
+        await configureNeo4jAgentMemoryTools(ai, i);
+      }
+    }
   });
 }
 
