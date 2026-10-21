@@ -118,12 +118,18 @@ export const neo4jIndexerRef = (params: {
     },
   });
 };
+export interface AgentMemoryConfig {
+  endpoint?: string;
+  apiKey?: string;
+  workspaceId?: string;
+}
 
 export interface Neo4jParams<EmbedderCustomOptions extends z.ZodTypeAny> {
   indexId: string;
   embedder: EmbedderArgument<EmbedderCustomOptions>;
   embedderOptions?: z.infer<EmbedderCustomOptions>;
   clientParams?: Neo4jGraphConfig;
+  agentMemory?: AgentMemoryConfig;
   label?: string;
   textProperty?: string;
   embeddingProperty?: string;

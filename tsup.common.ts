@@ -21,8 +21,8 @@ export const defaultOptions = {
   clean: true,
   shims: true,
   outDir: "lib",
-  entry: ["src/**/*.ts"],
-  bundle: false,
+  entry: ["src/**/*.ts", "!src/**/__tests__/**", "!src/test-utils.ts"],
+  bundle: true,
   treeshake: false,
 };
 

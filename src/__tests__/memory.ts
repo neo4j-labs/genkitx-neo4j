@@ -87,13 +87,23 @@ interface RegisteredTool {
 }
 
 async function configureMemory(
+  agentMemory: {
+    endpoint?: string;
+    apiKey?: string;
+    workspaceId?: string;
+  } = {
+    endpoint: "https://memory.test/v1",
+    apiKey: "memory-api-key",
+    workspaceId: "memory-workspace",
+  },
   clientParams: Record<string, string> = {
-    url: "http://memory.test",
+    url: "bolt://neo4j.test:7687",
     username: "neo4j",
-    password: "password",
+    password: "neo4j-password",
   },
 ) {
   const tools = new Map<string, RegisteredTool>();
+
   const defineTool = jest.fn((definition: any, handler: ToolHandler) => {
     tools.set(definition.name, {
       handler,
@@ -104,6 +114,7 @@ async function configureMemory(
   const params = {
     indexId: "test-index",
     clientParams,
+    agentMemory,
   } as unknown as Neo4jParams<any>;
 
   const { configureNeo4jAgentMemoryTools } = await loadMemoryModule();
@@ -151,69 +162,87 @@ describe("Neo4j Agent Memory tools", () => {
     );
     expect(tools.has("neo4j/test-index/addMemoryRelationship")).toBe(false);
     expect(mockMemoryClientConstructor).toHaveBeenCalledWith({
-      endpoint: "http://memory.test",
-      username: "neo4j",
-      password: "password",
+      endpoint: "https://memory.test/v1",
+      apiKey: "memory-api-key",
+      workspaceId: "memory-workspace",
     });
     expect(mockMemoryClient.connect).toHaveBeenCalledTimes(1);
   });
 
-  test.each([
-    ["bolt://", "bolt://localhost:7687"],
-    ["neo4j://", "neo4j://localhost:7687"],
-  ])("uses local Agent Memory endpoint for %s URLs", async (_scheme, url) => {
-    await configureMemory({ url, username: "neo4j", password: "secret" });
+  test("uses MEMORY_ENDPOINT when agentMemory.endpoint is not configured", async () => {
+    process.env.MEMORY_ENDPOINT = "https://env-memory.test/v1";
+
+    await configureMemory({
+      apiKey: "memory-api-key",
+      workspaceId: "memory-workspace",
+    });
 
     expect(mockMemoryClientConstructor).toHaveBeenCalledWith({
-      endpoint: "http://localhost:3001",
-      username: "neo4j",
-      password: "secret",
+      endpoint: "https://env-memory.test/v1",
+      apiKey: "memory-api-key",
+      workspaceId: "memory-workspace",
     });
   });
 
-  test("uses the local Agent Memory endpoint when the configured URL is empty", async () => {
-    await configureMemory({ url: "", username: "neo4j", password: "secret" });
+  test("prefers agentMemory.endpoint over MEMORY_ENDPOINT", async () => {
+    process.env.MEMORY_ENDPOINT = "https://env-memory.test/v1";
 
-    expect(mockMemoryClientConstructor).toHaveBeenCalledWith({
-      endpoint: "http://localhost:3001",
-      username: "neo4j",
-      password: "secret",
+    await configureMemory({
+      endpoint: "https://configured-memory.test/v1",
     });
-  });
 
-  test("uses default Neo4j environment configuration when clientParams are absent", async () => {
-    process.env.NEO4J_URI = "http://localhost:3001";
-    process.env.NEO4J_USERNAME = "env-user";
-    process.env.NEO4J_PASSWORD = "env-password";
-
-    const { configureNeo4jAgentMemoryTools } = await loadMemoryModule();
-    await configureNeo4jAgentMemoryTools(
-      { defineTool: jest.fn() } as unknown as Genkit,
-      { indexId: "test-index" } as unknown as Neo4jParams<any>,
+    expect(mockMemoryClientConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: "https://configured-memory.test/v1",
+      }),
     );
-
-    expect(mockMemoryClientConstructor).toHaveBeenCalledWith({
-      endpoint: "http://localhost:3001",
-      username: "env-user",
-      password: "env-password",
-    });
   });
 
-  test("reports missing environment configuration when clientParams are absent", async () => {
-    delete process.env.NEO4J_URI;
-    delete process.env.NEO4J_USERNAME;
-    delete process.env.NEO4J_PASSWORD;
+  test("does not use clientParams.url as the Agent Memory endpoint", async () => {
+    delete process.env.MEMORY_ENDPOINT;
 
     const { configureNeo4jAgentMemoryTools } = await loadMemoryModule();
 
     await expect(
       configureNeo4jAgentMemoryTools(
         { defineTool: jest.fn() } as unknown as Genkit,
-        { indexId: "test-index" } as unknown as Neo4jParams<any>,
+        {
+          indexId: "test-index",
+          clientParams: {
+            url: "neo4j+s://database.neo4j.io",
+            username: "neo4j",
+            password: "password",
+          },
+        } as unknown as Neo4jParams<any>,
       ),
+    ).rejects.toThrow("Agent Memory endpoint is required");
+
+    expect(mockMemoryClientConstructor).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    "bolt://localhost:7687",
+    "neo4j://localhost:7687",
+    "neo4j+s://database.neo4j.io",
+  ])("rejects %s as an Agent Memory endpoint", async (endpoint) => {
+    await expect(
+      configureMemory({
+        endpoint,
+      }),
     ).rejects.toThrow(
-      "Please provide Neo4j connection details through environment variables",
+      "Agent Memory requires an HTTP or HTTPS service endpoint",
     );
+
+    expect(mockMemoryClientConstructor).not.toHaveBeenCalled();
+  });
+
+  test("rejects an invalid Agent Memory endpoint", async () => {
+    await expect(
+      configureMemory({
+        endpoint: "not-a-url",
+      }),
+    ).rejects.toThrow("Invalid Agent Memory endpoint");
+
     expect(mockMemoryClientConstructor).not.toHaveBeenCalled();
   });
 
@@ -224,7 +253,7 @@ describe("Neo4j Agent Memory tools", () => {
     const { tools } = await configureMemory();
 
     expect(warning).toHaveBeenCalledWith(
-      "[Genkit Neo4j] Warning: Could not connect to memory endpoint at http://memory.test. Tools might fail.",
+      "[Genkit Neo4j] Warning: Could not connect to memory endpoint at https://memory.test/v1. Tools might fail.",
     );
     expect(tools.size).toBe(toolNames.length);
   });
@@ -245,11 +274,14 @@ describe("Neo4j Agent Memory tools", () => {
         {
           indexId: "test-index",
           clientParams: {
-            url: "http://memory.test",
+            url: "bolt://neo4j.test:7687",
             username: "neo4j",
             password: "password",
           },
-        } as unknown as Neo4jParams<any>,
+          agentMemory: {
+            endpoint: "https://memory.test/v1",
+          },
+        },
       ),
     ).rejects.toThrow(
       "You must install '@neo4j-labs/agent-memory' to use the agent memory tools. \n" +

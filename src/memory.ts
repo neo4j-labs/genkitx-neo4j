@@ -22,22 +22,54 @@ export async function configureNeo4jAgentMemoryTools<
   }
 
   const { indexId } = params;
-  const neo4jConfig = params.clientParams ?? getDefaultConfig();
+  const agentMemoryConfig = params.agentMemory ?? {};
 
-  const defaultMemoryEndpoint = "http://localhost:3001";
-  let memoryEndpoint = neo4jConfig.url || defaultMemoryEndpoint;
+  const memoryEndpoint =
+    agentMemoryConfig.endpoint ?? process.env.MEMORY_ENDPOINT;
+
+  if (!memoryEndpoint) {
+    throw new Error(
+      "Agent Memory endpoint is required when enableAgentMemoryTools is true. " +
+        "Configure agentMemory.endpoint or set MEMORY_ENDPOINT.",
+    );
+  }
+
+  let parsedMemoryEndpoint: URL;
+
+  try {
+    parsedMemoryEndpoint = new URL(memoryEndpoint);
+  } catch {
+    throw new Error(
+      `Invalid Agent Memory endpoint '${memoryEndpoint}'. ` +
+        "Expected a valid HTTP or HTTPS URL.",
+    );
+  }
+
   if (
-    memoryEndpoint.startsWith("bolt://") ||
-    memoryEndpoint.startsWith("neo4j://")
+    parsedMemoryEndpoint.protocol !== "http:" &&
+    parsedMemoryEndpoint.protocol !== "https:"
   ) {
-    // If the user passed the DB url by mistake, default to the local Python server
-    memoryEndpoint = defaultMemoryEndpoint;
+    throw new Error(
+      `Invalid Agent Memory endpoint '${memoryEndpoint}'. ` +
+        "Agent Memory requires an HTTP or HTTPS service endpoint, " +
+        "not a Neo4j Bolt URI.",
+    );
   }
 
   const memoryClient = new MemoryClient({
     endpoint: memoryEndpoint,
-    username: neo4jConfig.username,
-    password: neo4jConfig.password,
+
+    ...(agentMemoryConfig.apiKey
+      ? { apiKey: agentMemoryConfig.apiKey }
+      : process.env.MEMORY_API_KEY
+        ? { apiKey: process.env.MEMORY_API_KEY }
+        : {}),
+
+    ...(agentMemoryConfig.workspaceId
+      ? { workspaceId: agentMemoryConfig.workspaceId }
+      : process.env.MEMORY_WORKSPACE_ID
+        ? { workspaceId: process.env.MEMORY_WORKSPACE_ID }
+        : {}),
   });
 
   /**

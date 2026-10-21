@@ -1,183 +1,93 @@
-# Genkitx-neo4j with Neo4j Agent Memory (TCK Integration)
+# Genkitx-neo4j with Neo4j Agent Memory
 
-This document explains how to use `genkitx-neo4j` together with the Neo4j Agent Memory TCK (short-term, long-term and reasoning memory).
+This document explains how to use `genkitx-neo4j` with Neo4j Agent Memory using the hosted Neo4j Agent Memory Service (NAMS), and how to use the TCK bridge for conformance testing.
 
 ## Memory Model
 
-The system supports three types of memory:
+Neo4j Agent Memory provides three memory areas:
 
-- Short-term: session-based conversation memory
-- Long-term: persistent entities, facts and preferences
-- Reasoning: structured reasoning traces for agents
+- **Short-term:** conversations and messages.
+- **Long-term:** reusable entity knowledge, with additional operations such as
+  facts and preferences available depending on the selected backend.
+- **Reasoning:** recorded agent steps, tool calls, and related execution
+  information, with APIs depending on the selected backend.
 
-## Important: @neo4j-labs/agent-memory is not publicly available
+Backend capabilities differ between hosted NAMS REST and BridgeTransport.
 
-The official documentation suggests:
+## Installation
 
-```bash
-npm install @neo4j-labs/agent-memory
-```
-
-This currently does not work because the package is not published.
-
-## Manual installation (required)
-
-Clone the repository:
+Install `genkitx-neo4j` together with the Neo4j Agent Memory TypeScript client:
 
 ```bash
-git clone https://github.com/neo4j-labs/agent-memory.git
+npm install genkitx-neo4j @neo4j-labs/agent-memory
 ```
 
-Build the TypeScript client:
+## TCK / Bridge conformance testing
 
-```bash
-cd agent-memory/clients/typescript
-npm install
-npm run build
-```
+The TCK bridge is used for Agent Memory conformance testing. It is not required for consumers using the hosted NAMS REST service.
 
-Link it in your project:
+For BridgeTransport setup and conformance testing, refer to the
+[Neo4j Agent Memory TCK documentation](https://neo4j-labs.github.io/agent-memory-tck/index.html).
 
-```json
-{
-  "devDependencies": {
-    "@neo4j-labs/agent-memory": "file:../agent-memory/clients/typescript"
-  }
-}
-```
+## Tool availability
 
-## Future installation
+Tool availability depends on the Agent Memory backend and the Agent Memory SDK/API version being used.
 
-Once the package is published:
+### Hosted NAMS validation
 
-```bash
-npm install @neo4j-labs/agent-memory
-```
+The following tools were successfully validated with the hosted NAMS REST
+backend using `@neo4j-labs/agent-memory@0.5.0`.
 
-## Running the TCK bridge
+#### Short-term
 
-### Conformance python
+- `addMemoryMessage`
+- `getMemoryConversation`
+- `listMemorySessions`
+- `clearMemorySession`
 
-In the cloned agent-memory repository folder (not in the project folder):
+#### Long-term
 
-```bash
-export NEO4J_PASSWORD=my_secret_password
-make conformance-python
-```
+- `addMemoryEntity`
+- `searchMemoryEntities`
 
-### Without LLM
+### Backend-specific operations
 
-```bash
-uv run --python 3.12 \
-  --with fastapi \
-  --with uvicorn \
-  --with "neo4j-agent-memory[sentence-transformers]" \
-  uvicorn server-without-llm:app --port 8000
-```
+The following tools currently map to Agent Memory SDK methods that are
+BridgeTransport-only in `@neo4j-labs/agent-memory@0.5.0`. When used against
+hosted NAMS REST, these operations return `NotSupportedError`.
 
-### With LLM
+#### Long-term
 
-```bash
-uv run --python 3.12 \
-  --with fastapi \
-  --with uvicorn \
-  --with "neo4j-agent-memory[sentence-transformers]" \
-  uvicorn server:app --port 8000
-```
+- `addMemoryFact`
+- `addMemoryPreference`
+- `getRelatedMemoryEntities`
+- `mergeDuplicateMemoryEntities`
 
-## Running tests
+#### Reasoning
 
-### Build TCK client
+- `startReasoningTrace`
 
-```bash
-npx tsx ../agent-memory/clients/typescript/src/client.ts
-```
+Because `startReasoningTrace` cannot start a trace through hosted NAMS REST
+with the current mapping, the following dependent reasoning tools could not
+be exercised as a complete hosted workflow:
 
-### Standalone test
+- `addReasoningStep`
+- `recordMemoryToolCall`
+- `completeReasoningTrace`
 
-```bash
-npx tsx test-standalone.ts
-```
+These limitations apply to the current `genkitx-neo4j` tool mappings and the
+hosted/bridge capability split in `@neo4j-labs/agent-memory@0.5.0`.
+Future Agent Memory SDK versions may expose different capabilities.
 
-### Integration test
+The TCK `BridgeTransport` is intended for conformance testing and is not required for the standard hosted NAMS consumer setup.
 
-```bash
-npx tsx test-integration.ts
-```
+### Currently disabled
 
-## Testing strategies
+- `addMemoryRelationship`
 
-### Manual tool testing
-
-- Calls tools directly without LLM
-
-```bash
-npx tsx comprehensive.ts
-```
-
-### Agentic testing
-
-- Basic test uses an LLM to orchestrate tools (with Google Gemini)
-
-```bash
-npx tsx test-agent.ts
-```
-
-- More comprehensive an LLM to orchestrate tools (with Google Gemini)
-
-```bash
-npx test-omni-agentic.ts
-```
-
-- Uses an LLM to orchestrate tools (with OpenAI)
-
-```bash
-npx test-omni-agentic-openai
-```
-
-### End-to-end testing
-
-- Full session and memory integration with [session.ts](./src/session.ts)
-
-```bash
-npx test-omni.ts
-```
-
-### Test with reasoning memory
-
-```bash
-npx test-comprehensive.ts
-```
-
-### Multi-index isolation
-
-- Ensures separation between indexes
-
-## Available tools
-
-### Short-term
-
-- addMemoryMessage
-- getMemoryConversation
-- listMemorySessions
-- clearMemorySession
-
-### Long-term
-
-- addMemoryEntity
-- addMemoryFact
-- addMemoryPreference
-- addMemoryRelationship
-- searchMemoryEntities
-- getRelatedMemoryEntities
-- mergeDuplicateMemoryEntities
-
-### Reasoning
-
-- startReasoningTrace
-- addReasoningStep
-- recordMemoryToolCall
-- completeReasoningTrace
+`addMemoryRelationship` is currently not registered as a Genkit tool.
+The corresponding Agent Memory SDK `addRelationship` compatibility method
+is BridgeTransport-only in `@neo4j-labs/agent-memory@0.5.0`.
 
 ## Known issues
 
@@ -192,16 +102,17 @@ The adapter maps `attributes` to `properties`.
 
 Use `properties` in TypeScript.
 
-## Improvements
+## Implementation notes
 
 - Single connection initialization
-- Fixed addRelationship parameter bug
-- Default port aligned to 3001
+- Improved relationship parameter handling
 - Improved schemas for LLM usage
 
-## Neo4j configuration
+## Configuration
 
-### Python bridge
+The Neo4j database connection and Agent Memory service connection are configured separately.
+
+### Neo4j database
 
 ```bash
 export NEO4J_URI=bolt://localhost:7687
@@ -209,21 +120,49 @@ export NEO4J_USERNAME=neo4j
 export NEO4J_PASSWORD=password
 ```
 
-### Genkit configuration
-
 ```ts
 clientParams: {
-  url: 'bolt://localhost:7687',
-  username: 'neo4j',
-  password: 'your_password'
+  url: process.env.NEO4J_URI,
+  username: process.env.NEO4J_USERNAME,
+  password: process.env.NEO4J_PASSWORD,
 }
 ```
 
+### Hosted NAMS
+
+```bash
+export MEMORY_ENDPOINT=https://memory.neo4jlabs.com/v1
+export MEMORY_API_KEY=your_api_key
+export MEMORY_WORKSPACE_ID=your_workspace_id
+```
+
+```ts
+agentMemory: {
+  endpoint: process.env.MEMORY_ENDPOINT,
+  apiKey: process.env.MEMORY_API_KEY,
+  workspaceId: process.env.MEMORY_WORKSPACE_ID,
+}
+```
+
+Enable Agent Memory tools with:
+
+```ts
+enableAgentMemoryTools: true;
+```
+
+`clientParams` configures the Neo4j database connection, while `agentMemory` configures the Agent Memory HTTP service.
+
 ## Verification
 
-- Short-term memory works
-- Long-term memory works
-- Reasoning traces work
+The integration has been validated using:
 
-- Align messageLabel with TCK
-- Make long-term memory optional
+- Package build and automated tests
+- Packed npm artifact installed in a separate consumer project
+- ESM import from the packed package
+- Hosted NAMS short-term memory operations
+- Hosted NAMS entity creation and search
+- Independent Neo4j database and Agent Memory endpoint configuration
+
+Hosted NAMS validation was performed with
+`@neo4j-labs/agent-memory@0.5.0`. Backend-specific operations are documented
+in the Tool availability section above.

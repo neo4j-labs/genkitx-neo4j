@@ -56,8 +56,12 @@ let docs = await ai.retrieve({
 Full reference available in Genkit documentation:
 [https://firebase.google.com/docs/genkit](https://firebase.google.com/docs/genkit)
 
-## TCK Integration (Agent Memory)
+## Neo4j Agent Memory
 
-To use this plugin together with the Neo4j Agent Memory TCK (short-term, long-term and reasoning memory), see:
+`genkitx-neo4j` supports Neo4j Agent Memory for short-term, long-term,
+and reasoning memory capabilities.
+
+For setup, hosted NAMS support, available tools, and optional TCK/Bridge
+conformance testing, see:
 
 [TCK.md](./TCK.md)
