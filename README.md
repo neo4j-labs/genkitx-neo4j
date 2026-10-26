@@ -10,7 +10,7 @@ This is a Neo4j plugin for Genkit, providing vector indexing and retrieval capab
 npm i --save genkitx-neo4j
 ```
 
-## Environment variable
+## Environment variables
 
 Configure your Neo4j connection:
 
@@ -57,3 +57,13 @@ let docs = await ai.retrieve({
 
 Full reference available in Genkit documentation:
 [https://firebase.google.com/docs/genkit](https://firebase.google.com/docs/genkit)
+
+## Neo4j Agent Memory
+
+`genkitx-neo4j` supports Neo4j Agent Memory for short-term, long-term,
+and reasoning memory capabilities.
+
+For setup, hosted NAMS support, available tools, and optional TCK/Bridge
+conformance testing, see:
+
+[TCK.md](./TCK.md)
