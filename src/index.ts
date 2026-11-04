@@ -36,6 +36,11 @@ import {
 } from "./rag-utils";
 import { safeIdent } from "./filter-utils";
 import { configureNeo4jAgentMemoryTools } from "./memory";
+export {
+  neo4jAgentMemoryMiddleware,
+  Neo4jAgentMemoryMiddlewareOptionsSchema,
+  type Neo4jAgentMemoryMiddlewareOptions,
+} from "./agent-memory-middleware";
 
 export const FULLTEXT_INDEX_SUFFIX = "__fulltext";
 export const errorMetadataAndHybrid =

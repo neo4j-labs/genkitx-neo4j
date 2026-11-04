@@ -66,7 +66,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^20.17.28",
     "@types/uuid": "^9.0.6",
-    "genkit": "^1.42.0",
+    "genkit": "^1.43.0",
     "jest": "^29.7.0",
     "jest-runner-tsd": "^6.0.0",
     "llm-chunk": "^0.0.1",
